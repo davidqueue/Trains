@@ -29,9 +29,9 @@
 header{margin-bottom:28px}
 .kicker{font-family:“JetBrains Mono”,monospace;font-size:10px;letter-spacing:.28em;
 text-transform:uppercase;color:var(–ink-2);}
-h1{font-weight:600;font-size:clamp(34px,8vw,52px);line-height:1.0;
+h1{font-weight:400;font-size:clamp(34px,8vw,52px);line-height:1.0;
 margin:8px 0 0;letter-spacing:-.02em;}
-h1 em{font-style:italic;font-weight:400}
+h1 strong{font-weight:800}
 .station-tag{font-family:“JetBrains Mono”,monospace;font-size:11px;
 letter-spacing:.16em;text-transform:uppercase;color:var(–ink-2);
 margin-top:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -70,6 +70,19 @@ padding:18px 0;border-bottom:1px solid var(–line);}
 .stat .k{font-family:“JetBrains Mono”,monospace;font-size:10px;letter-spacing:.2em;
 text-transform:uppercase;color:var(–ink-2);margin-bottom:4px}
 .stat .v{font-weight:600;font-size:22px;letter-spacing:-.01em}
+
+/* Journey row */
+.journey{display:grid;grid-template-columns:1fr 1px 1fr;
+padding:18px 0;border-bottom:1px solid var(–line);gap:18px;}
+.journey-side .k{font-family:“JetBrains Mono”,monospace;font-size:10px;
+letter-spacing:.2em;text-transform:uppercase;color:var(–ink-2);margin-bottom:6px}
+.journey-side .v{font-weight:600;font-size:22px;letter-spacing:-.01em;font-style:italic}
+.journey-divider{background:var(–line)}
+.alerts{font-family:“JetBrains Mono”,monospace;font-size:12px;
+line-height:1.45;color:var(–ink-2);font-weight:400}
+.alerts.warn{color:var(–amber)}
+.alerts.bad{color:var(–red)}
+.alerts.ok{color:var(–green)}
 
 /* Map button */
 .map-link{display:inline-flex;align-items:center;gap:10px;margin:22px 0 6px;
@@ -114,11 +127,9 @@ margin-right:6px;animation:pulse 1.4s infinite ease-in-out;vertical-align:middle
 <body>
 <div class="wrap">
   <header>
-    <h1>David <em>is going to</em> St James Street Overground</h1>
-    <div class="station-tag">
-      <span>Walthamstow</span>
-      <span class="dot"></span>
-      <span>Inbound</span>
+    <h1><strong>David</strong> to <strong>St James Street Overground</strong></h1>
+    <div class="station-tag" id="weatherTag">
+      <span class="pulse"></span><span>Loading weather…</span>
     </div>
   </header>
 
@@ -133,8 +144,20 @@ margin-right:6px;animation:pulse 1.4s infinite ease-in-out;vertical-align:middle
 
   <div class="stats">
     <div class="stat"><div class="k">Walking</div><div class="v" id="distVal">—</div></div>
-    <div class="stat"><div class="k">Cool-down</div><div class="v" id="coolVal">—</div></div>
+    <div class="stat"><div class="k">Factored-in cool-down</div><div class="v" id="coolVal">—</div></div>
     <div class="stat"><div class="k">Next train</div><div class="v" id="trainVal">—</div></div>
+  </div>
+
+  <div class="journey">
+    <div class="journey-side">
+      <div class="k">Arriving Liverpool St</div>
+      <div class="v" id="arriveVal">—</div>
+    </div>
+    <div class="journey-divider"></div>
+    <div class="journey-side">
+      <div class="k">Alerts</div>
+      <div class="alerts" id="alertsVal">—</div>
+    </div>
   </div>
 
   <a id="mapLink" class="map-link" href="#" target="_blank" rel="noopener" style="display:none">
@@ -221,14 +244,46 @@ margin-right:6px;animation:pulse 1.4s infinite ease-in-out;vertical-align:middle
       .filter(a => !Number.isNaN(a.eta))
       .sort((x,y) => x.eta - y.eta);
   }
-  async function getTemperature(){
-    // Open-Meteo: free, no key. Current temperature at the station's coords.
+  async function getWeather(){
+    // Open-Meteo: free, no key. Current conditions at the station's coords.
     try {
-      const url = `https://api.open-meteo.com/v1/forecast?latitude=${STATION.lat}&longitude=${STATION.lon}&current=temperature_2m`;
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${STATION.lat}&longitude=${STATION.lon}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,precipitation`;
       const r = await fetch(url);
       if (!r.ok) return null;
       const d = await r.json();
-      return d?.current?.temperature_2m ?? null;
+      return d?.current ?? null;
+    } catch { return null; }
+  }
+
+  function describeWeather(code){
+    // WMO weather codes → short text
+    if (code == null) return "";
+    if (code === 0) return "Clear";
+    if (code === 1) return "Mostly clear";
+    if (code === 2) return "Partly cloudy";
+    if (code === 3) return "Overcast";
+    if (code === 45 || code === 48) return "Foggy";
+    if (code >= 51 && code <= 57) return "Drizzling";
+    if (code >= 61 && code <= 67) return "Raining";
+    if (code >= 71 && code <= 77) return "Snowing";
+    if (code >= 80 && code <= 82) return "Rain showers";
+    if (code >= 85 && code <= 86) return "Snow showers";
+    if (code >= 95) return "Thunderstorm";
+    return "";
+  }
+
+  const LIV_ST_ID = "910GLIVST";
+  let journeyMinutes = null;
+
+  async function getJourneyMinutes(){
+    // TfL Journey Planner: St James Street → Liverpool Street (Overground only)
+    try {
+      const url = `${TFL}/Journey/JourneyResults/${STATION.id}/to/${LIV_ST_ID}?mode=overground&useRealTimeLiveArrivals=true&alternativeWalking=false`;
+      const r = await fetch(url);
+      if (!r.ok) return null;
+      const d = await r.json();
+      const j = (d?.journeys || [])[0];
+      return j?.duration ?? null; // minutes
     } catch { return null; }
   }
 
@@ -294,6 +349,7 @@ margin-right:6px;animation:pulse 1.4s infinite ease-in-out;vertical-align:middle
   let userPos = null;
   let arrivalsCache = [];
   let statusCache = null;
+  let weather = null;
   let tempC = null;
   let lastRouteRefresh = 0;
 
@@ -334,6 +390,54 @@ margin-right:6px;animation:pulse 1.4s infinite ease-in-out;vertical-align:middle
   }
 
   // ---------- Render ----------
+  function renderAlerts(){
+    const el = $("alertsVal");
+    const items = [];
+    let worstTier = "ok"; // ok < warn < bad
+
+    // Line status
+    const ls = (statusCache?.lineStatuses) || [];
+    const worstLine = ls.length
+      ? ls.reduce((a,c) => (c.statusSeverity ?? 10) < (a.statusSeverity ?? 10) ? c : a)
+      : null;
+    if (worstLine && (worstLine.statusSeverity ?? 10) < 10){
+      const sev = worstLine.statusSeverity;
+      items.push(worstLine.statusSeverityDescription || "Disruption");
+      worstTier = sev <= 5 ? "bad" : "warn";
+    }
+
+    // Weather-based road/walk warnings
+    const wc = weather?.weather_code;
+    const precip = weather?.precipitation ?? 0;
+    const wind = weather?.wind_speed_10m ?? 0;
+    if (wc != null){
+      if (wc >= 95){ items.push("Thunderstorm"); worstTier = worstTier === "bad" ? "bad" : "bad"; }
+      else if ((wc >= 71 && wc <= 77) || (wc >= 85 && wc <= 86)){
+        items.push("Snow — pavements may be slippery");
+        if (worstTier === "ok") worstTier = "warn";
+      }
+      else if (wc >= 61 && wc <= 67){
+        items.push("Heavy rain");
+        if (worstTier === "ok") worstTier = "warn";
+      }
+      else if (precip >= 1){
+        items.push("Wet underfoot");
+      }
+    }
+    if (wind >= 40){
+      items.push(`Strong wind (${Math.round(wind)} km/h)`);
+      if (worstTier === "ok") worstTier = "warn";
+    }
+
+    el.className = `alerts ${worstTier}`;
+    if (!items.length){
+      el.textContent = "Nothing to flag";
+      el.className = "alerts ok";
+    } else {
+      el.innerHTML = items.map(t => `• ${t}`).join("<br>");
+    }
+  }
+
   function renderStatus(){
     const b = $("statusBanner");
     if (!statusCache){ b.classList.remove("show"); return; }
@@ -366,6 +470,8 @@ margin-right:6px;animation:pulse 1.4s infinite ease-in-out;vertical-align:middle
       $("distVal").textContent = distM != null ? fmtKm(distM) : "—";
       $("coolVal").textContent = `${Math.round(cooldownSeconds(tempC)/60)} min`;
       $("trainVal").textContent = "—";
+      $("arriveVal").textContent = "—";
+      renderAlerts();
       return;
     }
 
@@ -382,6 +488,7 @@ margin-right:6px;animation:pulse 1.4s infinite ease-in-out;vertical-align:middle
       $("paceVal").textContent = "—";
       $("paceSub").textContent = "Waiting for location…";
       $("paceDesc").textContent = "";
+      renderAlerts();
       return;
     }
 
@@ -411,6 +518,15 @@ margin-right:6px;animation:pulse 1.4s infinite ease-in-out;vertical-align:middle
     const mins = Math.max(0, Math.round(secsLeft/60));
     $("trainVal").textContent = mins <= 0 ? "now" : `${mins} min`;
 
+    // Liverpool Street arrival
+    if (journeyMinutes != null){
+      const arriveAt = new Date(picked.eta + journeyMinutes * 60000);
+      $("arriveVal").textContent = arriveAt.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+    } else {
+      $("arriveVal").textContent = "—";
+    }
+    renderAlerts();
+
     list.innerHTML = "";
     arrivalsCache.slice(0, 6).forEach((a, i) => {
       const mins = Math.max(0, Math.round((a.eta - now)/60000));
@@ -431,13 +547,40 @@ margin-right:6px;animation:pulse 1.4s infinite ease-in-out;vertical-align:middle
       $("trainsList").innerHTML = `<div class="err">${e.message}</div>`;
     }
   }
+  async function pollJourney(){
+    journeyMinutes = await getJourneyMinutes();
+    render();
+  }
   async function pollStatus(){
     statusCache = await getLineStatus();
     renderStatus();
   }
   async function pollWeather(){
-    tempC = await getTemperature();
+    weather = await getWeather();
+    tempC = weather?.temperature_2m ?? null;
+    renderWeather();
     render();
+  }
+
+  function renderWeather(){
+    const tag = $("weatherTag");
+    if (!weather){
+      tag.innerHTML = `<span class="pulse"></span><span>Loading weather…</span>`;
+      return;
+    }
+    const parts = [];
+    const cond = describeWeather(weather.weather_code);
+    if (cond) parts.push(cond);
+    if (weather.temperature_2m != null) parts.push(`${Math.round(weather.temperature_2m)}°C`);
+    if (weather.apparent_temperature != null && Math.abs(weather.apparent_temperature - weather.temperature_2m) >= 2){
+      parts.push(`feels ${Math.round(weather.apparent_temperature)}°`);
+    }
+    if (weather.wind_speed_10m != null && weather.wind_speed_10m >= 15){
+      parts.push(`wind ${Math.round(weather.wind_speed_10m)} km/h`);
+    }
+    tag.innerHTML = parts.map((p,i) =>
+      `<span>${p}</span>${i < parts.length-1 ? '<span class="dot"></span>' : ''}`
+    ).join("");
   }
 
   // ---------- Boot ----------
@@ -447,9 +590,11 @@ margin-right:6px;animation:pulse 1.4s infinite ease-in-out;vertical-align:middle
     pollArrivals();
     pollStatus();
     pollWeather();
+    pollJourney();
     setInterval(pollArrivals, REFRESH_ARRIVALS_MS);
     setInterval(pollStatus, REFRESH_STATUS_MS);
     setInterval(pollWeather, REFRESH_WEATHER_MS);
+    setInterval(pollJourney, REFRESH_STATUS_MS);
     setInterval(render, 1000);
   })();
 </script>
