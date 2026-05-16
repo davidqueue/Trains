@@ -121,13 +121,60 @@ text-transform:uppercase;color:var(–ink-2);text-align:center;}
 .pulse{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(–accent);
 margin-right:6px;animation:pulse 1.4s infinite ease-in-out;vertical-align:middle}
 @keyframes pulse{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1.15)}}
+
+/* Selection page */
+.select-wrap{min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px}
+.select-card{max-width:480px;width:100%}
+.select-title{font-weight:400;font-size:clamp(28px,7vw,40px);line-height:1.1;
+margin:8px 0 32px;letter-spacing:-.02em;}
+.select-group{margin-bottom:24px}
+.select-label{font-family:“JetBrains Mono”,monospace;font-size:10px;letter-spacing:.22em;
+text-transform:uppercase;color:var(–ink-2);margin-bottom:10px}
+.select-options{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.opt{padding:16px 14px;border:1px solid var(–line-2);background:var(–bg);
+color:var(–ink);font-family:“Fraunces”,serif;font-size:17px;font-weight:400;
+cursor:pointer;text-align:left;transition:all .15s ease;letter-spacing:-.01em;}
+.opt:hover{border-color:var(–ink-2)}
+.opt.active{background:var(–ink);color:var(–bg);border-color:var(–ink);font-weight:600}
+.submit-btn{margin-top:14px;width:100%;padding:16px;border:1px solid var(–ink);
+background:var(–ink);color:var(–bg);font-family:“JetBrains Mono”,monospace;
+font-size:12px;letter-spacing:.22em;text-transform:uppercase;cursor:pointer;}
+.submit-btn:disabled{opacity:.3;cursor:not-allowed}
 </style>
 
 </head>
 <body>
-<div class="wrap">
+<div id="selectPage" class="select-wrap">
+  <div class="select-card">
+    <div class="kicker">Choose your trip</div>
+    <h2 class="select-title">Who's going where?</h2>
+
+```
+<div class="select-group">
+  <div class="select-label">Who</div>
+  <div class="select-options" data-group="person">
+    <button class="opt" data-value="david">David</button>
+    <button class="opt" data-value="ashley">Ashley</button>
+  </div>
+</div>
+
+<div class="select-group">
+  <div class="select-label">To</div>
+  <div class="select-options" data-group="station">
+    <button class="opt" data-value="stjames">St James Street</button>
+    <button class="opt" data-value="blackhorse">Blackhorse Road</button>
+  </div>
+</div>
+
+<button id="submitBtn" class="submit-btn" disabled>Submit</button>
+```
+
+  </div>
+</div>
+
+<div id="mainPage" class="wrap" style="display:none">
   <header>
-    <h1><strong>David</strong> to <strong>St James Street Overground</strong></h1>
+    <h1 id="titleHeader"><strong>David</strong> to <strong>St James Street Overground</strong></h1>
     <div class="station-tag" id="weatherTag">
       <span class="pulse"></span><span>Loading weather…</span>
     </div>
@@ -150,7 +197,7 @@ margin-right:6px;animation:pulse 1.4s infinite ease-in-out;vertical-align:middle
 
   <div class="journey">
     <div class="journey-side">
-      <div class="k">Arriving Liverpool St</div>
+      <div class="k" id="arriveLabel">Arriving</div>
       <div class="v" id="arriveVal">—</div>
     </div>
     <div class="journey-divider"></div>
@@ -176,14 +223,36 @@ margin-right:6px;animation:pulse 1.4s infinite ease-in-out;vertical-align:middle
 </div>
 
 <script>
-  const STATION = {
-    id: "910GSTJMSST",
-    name: "St James Street",
-    lat: 51.5828,
-    lon: -0.0098,
-    direction: "inbound"
+  const STATIONS = {
+    stjames: {
+      id: "910GSTJMSST",
+      name: "St James Street Overground",
+      lat: 51.5828, lon: -0.0098,
+      direction: "inbound",
+      lineId: "weaver",
+      destId: "910GLIVST",
+      destName: "Liverpool St",
+      mode: "overground"
+    },
+    blackhorse: {
+      id: "940GZZLUBLR",
+      name: "Blackhorse Road",
+      lat: 51.5869, lon: -0.0412,
+      direction: "inbound",
+      lineId: "victoria",
+      destId: "940GZZLUKSX",
+      destName: "King's Cross",
+      mode: "tube"
+    }
   };
-  const LINE_ID = "weaver"; // Overground line serving St James Street
+  const PEOPLE = {
+    david: "David",
+    ashley: "Ashley"
+  };
+  // Filled in after selection
+  let STATION = null;
+  let PERSON_NAME = null;
+  let LINE_ID = null;
   const TFL = "https://api.tfl.gov.uk";
   const REFRESH_ARRIVALS_MS = 30000;
   const REFRESH_STATUS_MS = 5 * 60 * 1000;
@@ -192,10 +261,23 @@ margin-right:6px;animation:pulse 1.4s infinite ease-in-out;vertical-align:middle
 
   function cooldownSeconds(tempC){
     if (tempC == null) return 120; // sensible default ≈ 2 min
-    if (tempC < 8)  return 60;
-    if (tempC < 17) return 120;
-    if (tempC < 22) return 180;
-    return 240;
+    const key = selection.station;
+    let secs;
+    if (key === "blackhorse"){
+      // Blackhorse Road: no wait under 18°C, 1 min 18–22°C, 2 min above 22°C
+      if (tempC < 18) secs = 0;
+      else if (tempC < 22) secs = 60;
+      else secs = 120;
+    } else {
+      // Default (St James Street)
+      if (tempC < 8)  secs = 60;
+      else if (tempC < 17) secs = 120;
+      else if (tempC < 22) secs = 180;
+      else secs = 240;
+    }
+    // Ashley gets 1 minute less, floored at 0
+    if (selection.person === "ashley") secs = Math.max(0, secs - 60);
+    return secs;
   }
 
   const $ = (id) => document.getElementById(id);
@@ -272,34 +354,22 @@ margin-right:6px;animation:pulse 1.4s infinite ease-in-out;vertical-align:middle
     return "";
   }
 
-  const LIV_ST_ID = "910GLIVST";
-  let journeyMinutes = null;
-
   async function getJourneyMinutes(){
-    // TfL Journey Planner: St James Street → Liverpool Street (Overground only)
     try {
-      const url = `${TFL}/Journey/JourneyResults/${STATION.id}/to/${LIV_ST_ID}?mode=overground&useRealTimeLiveArrivals=true&alternativeWalking=false`;
+      const url = `${TFL}/Journey/JourneyResults/${STATION.id}/to/${STATION.destId}?mode=${STATION.mode}&useRealTimeLiveArrivals=true&alternativeWalking=false`;
       const r = await fetch(url);
       if (!r.ok) return null;
       const d = await r.json();
       const j = (d?.journeys || [])[0];
-      return j?.duration ?? null; // minutes
+      return j?.duration ?? null;
     } catch { return null; }
   }
 
   async function getLineStatus(){
-    // Try Weaver first; if not yet recognised, fall back to broader Overground status
     try {
       const r = await fetch(`${TFL}/Line/${LINE_ID}/Status`);
       if (r.ok){
         const d = await r.json();
-        if (Array.isArray(d) && d.length) return d[0];
-      }
-    } catch {}
-    try {
-      const r2 = await fetch(`${TFL}/Line/london-overground/Status`);
-      if (r2.ok){
-        const d = await r2.json();
         if (Array.isArray(d) && d.length) return d[0];
       }
     } catch {}
@@ -351,6 +421,7 @@ margin-right:6px;animation:pulse 1.4s infinite ease-in-out;vertical-align:middle
   let statusCache = null;
   let weather = null;
   let tempC = null;
+  let journeyMinutes = null;
   let lastRouteRefresh = 0;
 
   // ---------- Geolocation ----------
@@ -583,8 +654,38 @@ margin-right:6px;animation:pulse 1.4s infinite ease-in-out;vertical-align:middle
     ).join("");
   }
 
+  // ---------- Selection flow ----------
+  const selection = { person: null, station: null };
+
+  function setupSelection(){
+    document.querySelectorAll(".select-options").forEach(group => {
+      const groupName = group.dataset.group;
+      group.querySelectorAll(".opt").forEach(btn => {
+        btn.addEventListener("click", () => {
+          group.querySelectorAll(".opt").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          selection[groupName] = btn.dataset.value;
+          $("submitBtn").disabled = !(selection.person && selection.station);
+        });
+      });
+    });
+    $("submitBtn").addEventListener("click", () => {
+      if (!selection.person || !selection.station) return;
+      PERSON_NAME = PEOPLE[selection.person];
+      STATION = { ...STATIONS[selection.station] };
+      LINE_ID = STATION.lineId;
+      $("selectPage").style.display = "none";
+      $("mainPage").style.display = "";
+      // Set the title
+      $("titleHeader").innerHTML =
+        `<strong>${PERSON_NAME}</strong> to <strong>${STATION.name}</strong>`;
+      $("arriveLabel").textContent = `Arriving ${STATION.destName}`;
+      start();
+    });
+  }
+
   // ---------- Boot ----------
-  (async () => {
+  async function start(){
     await getStationCoords();
     startWatch();
     pollArrivals();
@@ -596,7 +697,9 @@ margin-right:6px;animation:pulse 1.4s infinite ease-in-out;vertical-align:middle
     setInterval(pollWeather, REFRESH_WEATHER_MS);
     setInterval(pollJourney, REFRESH_STATUS_MS);
     setInterval(render, 1000);
-  })();
+  }
+
+  setupSelection();
 </script>
 
 </body>
