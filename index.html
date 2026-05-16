@@ -63,6 +63,12 @@ line-height:.92;letter-spacing:-.035em;margin:8px 0 4px;}
 font-style:italic;margin-top:2px}
 .pace-desc{font-family:“JetBrains Mono”,monospace;font-size:11px;
 color:var(–ink-2);margin-top:10px;letter-spacing:.04em;line-height:1.5}
+.pace-picker{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:18px}
+.pace-opt{padding:12px 8px;border:1px solid var(–line-2);background:var(–bg);
+color:var(–ink);font-family:“Fraunces”,serif;font-size:15px;font-weight:400;
+cursor:pointer;text-align:center;transition:all .15s ease;letter-spacing:-.01em;}
+.pace-opt:hover{border-color:var(–ink-2)}
+.pace-opt.active{background:var(–ink);color:var(–bg);border-color:var(–ink);font-weight:600}
 
 /* Stats row */
 .stats{display:grid;grid-template-columns:repeat(3,1fr);
@@ -183,16 +189,21 @@ font-size:12px;letter-spacing:.22em;text-transform:uppercase;cursor:pointer;}
   <div id="statusBanner" class="status-banner"></div>
 
   <div id="verdict" class="verdict">
-    <div class="label">You need to walk at</div>
+    <div class="label" id="paceLabel">You need to walk at</div>
     <div class="pace" id="paceVal">—</div>
     <div class="sub" id="paceSub"><span class="pulse"></span>Loading…</div>
     <div class="pace-desc" id="paceDesc"></div>
+    <div class="pace-picker" id="pacePicker" style="display:none">
+      <button class="pace-opt" data-pace="stroll">Stroll</button>
+      <button class="pace-opt" data-pace="brisk">Brisk walk</button>
+      <button class="pace-opt" data-pace="jog">Light jog</button>
+    </div>
   </div>
 
   <div class="stats">
     <div class="stat"><div class="k">Walking</div><div class="v" id="distVal">—</div></div>
     <div class="stat"><div class="k">Factored-in cool-down</div><div class="v" id="coolVal">—</div></div>
-    <div class="stat"><div class="k">Next train</div><div class="v" id="trainVal">—</div></div>
+    <div class="stat"><div class="k" id="trainStatLabel">Next train</div><div class="v" id="trainVal">—</div></div>
   </div>
 
   <div class="journey">
@@ -401,6 +412,11 @@ font-size:12px;letter-spacing:.22em;text-transform:uppercase;cursor:pointer;}
 
   // ---------- Pace tiers (m/s) ----------
   const STROLL = 1.25, NORMAL = 1.40, BRISK = 1.65, FAST = 1.95, RUN = 2.50;
+
+  // For Blackhorse Road's "you can walk at" picker
+  const PACE_SPEED = { stroll: STROLL, brisk: BRISK, jog: RUN };
+  const PACE_LABEL = { stroll: "Strolling", brisk: "Brisk walk", jog: "Light jog" };
+  let chosenPace = "brisk";
   function paceVerdict(distM, secondsLeft){
     if (secondsLeft <= 0) return { tier:"miss", label:"You've missed it", desc:"", speed:null };
     const reqSpeed = distM / secondsLeft; // m/s
@@ -563,11 +579,70 @@ font-size:12px;letter-spacing:.22em;text-transform:uppercase;cursor:pointer;}
       return;
     }
 
+    const isBlackhorse = selection.station === "blackhorse";
+    const coolSec = cooldownSeconds(tempC);
+    const coolMin = Math.round(coolSec/60);
+
+    if (isBlackhorse){
+      // "You can walk at" — user picks a pace; we calculate when they'll arrive at the station,
+      // then find the first train that leaves after their arrival + cool-down.
+      const speed = PACE_SPEED[chosenPace];
+      const walkSec = distM / speed;
+      const readyAt = Date.now() + (walkSec + coolSec) * 1000;
+
+      let pickedIdx = -1;
+      for (let i=0; i<arrivalsCache.length; i++){
+        if (arrivalsCache[i].eta >= readyAt){ pickedIdx = i; break; }
+      }
+
+      const kmh = speed * 3.6;
+      $("verdict").className = "verdict go";
+      $("paceVal").textContent = `${kmh.toFixed(1)} km/h`;
+      $("paceSub").textContent = PACE_LABEL[chosenPace];
+      $("paceDesc").textContent = `Walk ${fmtMinSec(walkSec)} · cool-down ${coolMin} min`;
+      $("distVal").textContent = fmtKm(distM) + (walkRouteM ? "" : " *");
+      $("coolVal").textContent = `${coolMin} min${tempC != null ? ` · ${Math.round(tempC)}°` : ""}`;
+
+      // Frequency stat: trains in next 10 minutes after you arrive
+      const windowMs = 10 * 60 * 1000;
+      const upcoming = arrivalsCache.filter(a => a.eta >= readyAt && a.eta <= readyAt + windowMs);
+      if (upcoming.length){
+        const lastEta = upcoming[upcoming.length-1].eta;
+        const spanMin = Math.max(1, Math.round((lastEta - readyAt)/60000));
+        $("trainVal").textContent = `${upcoming.length} in ${spanMin} min`;
+      } else if (pickedIdx >= 0){
+        const waitMin = Math.max(0, Math.round((arrivalsCache[pickedIdx].eta - readyAt)/60000));
+        $("trainVal").textContent = waitMin <= 0 ? "1 due" : `1 in ${waitMin} min`;
+      } else {
+        $("trainVal").textContent = "—";
+      }
+
+      // King's Cross arrival from the picked train
+      if (pickedIdx >= 0 && journeyMinutes != null){
+        const arriveAt = new Date(arrivalsCache[pickedIdx].eta + journeyMinutes * 60000);
+        $("arriveVal").textContent = arriveAt.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+      } else {
+        $("arriveVal").textContent = "—";
+      }
+      renderAlerts();
+
+      list.innerHTML = "";
+      arrivalsCache.slice(0, 6).forEach((a, i) => {
+        const mins = Math.max(0, Math.round((a.eta - now)/60000));
+        const row = document.createElement("div");
+        row.className = "train-row" + (i === pickedIdx ? " picked" : "");
+        row.innerHTML = `<div class="when">${mins===0?"due":mins+" min"}</div>
+          <div class="meta">${a.line||""}<br>→ ${a.destination||""}${a.platform?" · "+a.platform:""}</div>`;
+        list.appendChild(row);
+      });
+      return;
+    }
+
+    // Default (St James Street): "You need to walk at" — calculated pace
     // Pick first train you can make at power-walk or below; else first jog-able; else soonest
-    const coolSecPick = cooldownSeconds(tempC);
     let pickedIdx = 0;
     for (let i=0; i<arrivalsCache.length; i++){
-      const secs = (arrivalsCache[i].eta - now)/1000 - coolSecPick;
+      const secs = (arrivalsCache[i].eta - now)/1000 - coolSec;
       if (secs <= 0) continue;
       const req = distM / secs;
       pickedIdx = i;
@@ -575,7 +650,6 @@ font-size:12px;letter-spacing:.22em;text-transform:uppercase;cursor:pointer;}
     }
     const picked = arrivalsCache[pickedIdx];
     const secsLeft = (picked.eta - now)/1000;
-    const coolSec = cooldownSeconds(tempC);
     const effectiveSecs = secsLeft - coolSec;
     const v = paceVerdict(distM, effectiveSecs);
 
@@ -584,12 +658,11 @@ font-size:12px;letter-spacing:.22em;text-transform:uppercase;cursor:pointer;}
     $("paceSub").textContent = v.label;
     $("paceDesc").textContent = v.desc || "";
     $("distVal").textContent = fmtKm(distM) + (walkRouteM ? "" : " *");
-    const coolMin = Math.round(coolSec/60);
     $("coolVal").textContent = `${coolMin} min${tempC != null ? ` · ${Math.round(tempC)}°` : ""}`;
     const mins = Math.max(0, Math.round(secsLeft/60));
     $("trainVal").textContent = mins <= 0 ? "now" : `${mins} min`;
 
-    // Liverpool Street arrival
+    // Destination arrival
     if (journeyMinutes != null){
       const arriveAt = new Date(picked.eta + journeyMinutes * 60000);
       $("arriveVal").textContent = arriveAt.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
@@ -680,6 +753,26 @@ font-size:12px;letter-spacing:.22em;text-transform:uppercase;cursor:pointer;}
       $("titleHeader").innerHTML =
         `<strong>${PERSON_NAME}</strong> to <strong>${STATION.name}</strong>`;
       $("arriveLabel").textContent = `Arriving ${STATION.destName}`;
+
+      // Blackhorse Road: show the pace picker and change the headline label
+      if (selection.station === "blackhorse"){
+        $("paceLabel").textContent = "You can walk at";
+        $("trainStatLabel").textContent = "Frequency";
+        $("pacePicker").style.display = "grid";
+        // mark default
+        document.querySelectorAll(".pace-opt").forEach(b => {
+          b.classList.toggle("active", b.dataset.pace === chosenPace);
+        });
+        document.querySelectorAll(".pace-opt").forEach(b => {
+          b.addEventListener("click", () => {
+            chosenPace = b.dataset.pace;
+            document.querySelectorAll(".pace-opt").forEach(o =>
+              o.classList.toggle("active", o.dataset.pace === chosenPace));
+            render();
+          });
+        });
+      }
+
       start();
     });
   }
