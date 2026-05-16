@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Catch the Train · St James Street</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,800;1,9..144,800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1a1611; --paper:#f3ead8; --paper-2:#ebdfc2;
+    --accent:#d94f17; --accent-2:#0f3a2e;
+    --green:#0f3a2e; --amber:#c98a13; --red:#b3361a;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--paper);color:var(--ink);
+    font-family:"Fraunces", Georgia, serif;-webkit-font-smoothing:antialiased;}
+  body{
+    background-image:
+      radial-gradient(circle at 12% 8%, rgba(217,79,23,.10), transparent 42%),
+      radial-gradient(circle at 88% 92%, rgba(15,58,46,.12), transparent 42%);
+    min-height:100dvh;
+  }
+  .wrap{max-width:680px;margin:0 auto;padding:18px 18px 80px;}
+  header{border-bottom:2px solid var(--ink);padding-bottom:14px;margin-bottom:18px;}
+  .kicker{font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.24em;
+    text-transform:uppercase;color:var(--accent);}
+  h1{font-weight:800;font-size:clamp(40px,10vw,68px);line-height:.92;
+    margin:4px 0 0;letter-spacing:-.025em;}
+  h1 em{font-style:italic;color:var(--accent)}
+  .station-tag{font-family:"JetBrains Mono",monospace;font-size:11px;
+    letter-spacing:.22em;text-transform:uppercase;opacity:.7;margin-top:10px}
+
+  .card{background:var(--paper-2);border:2px solid var(--ink);
+    margin-bottom:16px;box-shadow:6px 6px 0 var(--ink);}
+  .verdict{padding:24px 20px;border-bottom:2px solid var(--ink);
+    display:flex;flex-direction:column;gap:4px;}
+  .verdict .pace{font-weight:800;font-style:italic;font-size:clamp(64px,18vw,108px);
+    line-height:.9;letter-spacing:-.03em;margin-top:4px;}
+  .verdict .label{font-family:"JetBrains Mono",monospace;font-size:11px;
+    letter-spacing:.22em;text-transform:uppercase;}
+  .verdict.idle{background:var(--paper-2)}
+  .verdict.go{background:#e9efe4}     .verdict.go .pace{color:var(--green)}
+  .verdict.hurry{background:#f6e8c8}   .verdict.hurry .pace{color:var(--amber)}
+  .verdict.run{background:#f3d8cf}     .verdict.run .pace{color:var(--red)}
+  .verdict.miss{background:#ddd5c4}    .verdict.miss .pace{color:var(--ink)}
+
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);}
+  .stat{padding:14px;border-right:2px solid var(--ink);}
+  .stat:last-child{border-right:0}
+  .stat .k{font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.2em;
+    text-transform:uppercase;opacity:.6}
+  .stat .v{font-weight:800;font-size:24px;margin-top:2px}
+
+  .trains{padding:14px 18px 18px}
+  .trains-title{font-family:"JetBrains Mono",monospace;font-size:11px;
+    letter-spacing:.22em;text-transform:uppercase;color:var(--accent-2);margin-bottom:8px}
+  .train-row{display:flex;align-items:baseline;justify-content:space-between;
+    padding:10px 0;border-bottom:1px dashed rgba(26,22,17,.25);}
+  .train-row:last-child{border-bottom:0}
+  .train-row .when{font-weight:800;font-size:22px;font-style:italic}
+  .train-row .meta{font-family:"JetBrains Mono",monospace;font-size:11px;opacity:.7;text-align:right}
+  .train-row.picked{background:#fff8e6;padding:10px 10px;margin:0 -10px;
+    border-left:3px solid var(--accent)}
+
+  .status-card{padding:14px 16px}
+  .status-card .k{font-family:"JetBrains Mono",monospace;font-size:11px;
+    letter-spacing:.22em;text-transform:uppercase;color:var(--accent-2);margin-bottom:6px}
+  .status-line{font-family:"JetBrains Mono",monospace;font-size:12px;opacity:.75}
+  .err{color:var(--red);font-family:"JetBrains Mono",monospace;font-size:12px}
+
+  footer{margin-top:24px;font-family:"JetBrains Mono",monospace;font-size:10px;
+    letter-spacing:.18em;text-transform:uppercase;opacity:.55;text-align:center;}
+
+  .pulse{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);
+    margin-right:8px;animation:pulse 1.4s infinite ease-in-out;vertical-align:middle}
+  @keyframes pulse{0%,100%{opacity:.3;transform:scale(.85)}50%{opacity:1;transform:scale(1.1)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="kicker">Pace · Distance · Departure</div>
+    <h1>Catch <em>the</em> train</h1>
+    <div class="station-tag">St James Street, Walthamstow · Inbound to Liverpool Street</div>
+  </header>
+
+  <section class="card">
+    <div id="verdict" class="verdict idle">
+      <div class="label">You need to walk at</div>
+      <div class="pace" id="paceVal">—</div>
+      <div class="label" id="paceSub"><span class="pulse"></span>Loading…</div>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="k">Distance</div><div class="v" id="distVal">—</div></div>
+      <div class="stat"><div class="k">Time left</div><div class="v" id="timeVal">—</div></div>
+      <div class="stat"><div class="k">Next train</div><div class="v" id="trainVal">—</div></div>
+    </div>
+    <div class="trains">
+      <div class="trains-title">Upcoming inbound</div>
+      <div id="trainsList"><div class="status-line">Waiting for data…</div></div>
+    </div>
+  </section>
+
+  <section class="card status-card">
+    <div class="k">Status</div>
+    <div id="locStatus" class="status-line"><span class="pulse"></span>Asking for your location…</div>
+  </section>
+
+  <footer>Data © Transport for London · Auto-refresh every 30 s</footer>
+</div>
+
+<script>
+  // Hardcoded station: St James Street (London) Rail Station — Overground (Weaver line)
+  const STATION = {
+    id: "910GSTJMSST",
+    name: "St James Street",
+    lat: 51.5829,   // approx — exact coords are looked up below if available
+    lon: -0.0099,
+    direction: "inbound"
+  };
+  const TFL = "https://api.tfl.gov.uk";
+  const REFRESH_MS = 30000;
+
+  const $ = (id) => document.getElementById(id);
+
+  // ---------- Geo + distance ----------
+  function haversine(a, b){
+    const R = 6371000, toRad = (d) => d*Math.PI/180;
+    const dLat = toRad(b.lat - a.lat), dLon = toRad(b.lon - a.lon);
+    const lat1 = toRad(a.lat), lat2 = toRad(b.lat);
+    const h = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;
+    return 2*R*Math.asin(Math.sqrt(h));
+  }
+  const mToMiles = (m) => m / 1609.344;
+  function fmtMiles(m){
+    const mi = mToMiles(m);
+    if (mi < 0.1) return `${Math.round(m)} m`;
+    return `${mi.toFixed(2)} mi`;
+  }
+  function fmtMinSec(sec){
+    if (sec < 0) return "—";
+    const m = Math.floor(sec/60), s = Math.round(sec%60);
+    return `${m}:${s.toString().padStart(2,"0")}`;
+  }
+
+  // ---------- TfL ----------
+  async function getStationCoords(){
+    try {
+      const r = await fetch(`${TFL}/StopPoint/${STATION.id}`);
+      if (!r.ok) return;
+      const d = await r.json();
+      if (d.lat && d.lon){ STATION.lat = d.lat; STATION.lon = d.lon; }
+    } catch {}
+  }
+  async function getArrivals(){
+    const r = await fetch(`${TFL}/StopPoint/${STATION.id}/Arrivals`);
+    if (!r.ok) throw new Error("TfL arrivals fetch failed");
+    const all = await r.json();
+    return all
+      .filter(a => a.direction === STATION.direction)
+      .map(a => ({
+        line: a.lineName,
+        platform: a.platformName,
+        destination: a.destinationName || a.towards,
+        eta: new Date(a.expectedArrival).getTime()
+      }))
+      .filter(a => !Number.isNaN(a.eta))
+      .sort((x,y) => x.eta - y.eta);
+  }
+
+  // ---------- Pace tiers (m/s) ----------
+  const STROLL = 1.25, NORMAL = 1.40, BRISK = 1.65, FAST = 1.95, RUN = 2.50;
+  function paceVerdict(distM, secondsLeft){
+    if (secondsLeft <= 0) return { tier:"miss", label:"You've missed it", speed:null };
+    const reqSpeed = distM / secondsLeft;
+    const mph = reqSpeed * 2.23694;
+    let tier, label;
+    if (reqSpeed <= STROLL)      { tier="go";    label="Strolling pace"; }
+    else if (reqSpeed <= NORMAL) { tier="go";    label="Normal walk"; }
+    else if (reqSpeed <= BRISK)  { tier="go";    label="Brisk walk"; }
+    else if (reqSpeed <= FAST)   { tier="hurry"; label="Power walk"; }
+    else if (reqSpeed <= RUN)    { tier="run";   label="Light jog"; }
+    else                          { tier="miss";  label="Not happening on foot"; }
+    return { tier, label, speed: mph };
+  }
+
+  // ---------- Geolocation (watch) ----------
+  let userPos = null;
+  function startWatch(){
+    if (!navigator.geolocation){
+      $("locStatus").innerHTML = `<span class="err">Geolocation not supported by this browser.</span>`;
+      return;
+    }
+    navigator.geolocation.watchPosition(
+      (p) => {
+        userPos = { lat:p.coords.latitude, lon:p.coords.longitude, accuracy:p.coords.accuracy };
+        const dist = haversine(userPos, STATION);
+        $("locStatus").innerHTML = `Located ±${Math.round(userPos.accuracy)} m · ${fmtMiles(dist)} from ${STATION.name}`;
+        render();
+      },
+      (e) => {
+        $("locStatus").innerHTML = `<span class="err">Location error: ${e.message}. Allow location access in your browser.</span>`;
+      },
+      { enableHighAccuracy:true, maximumAge:10000, timeout:15000 }
+    );
+  }
+
+  // ---------- Render ----------
+  let arrivalsCache = [];
+  function render(){
+    const list = $("trainsList");
+    const now = Date.now();
+
+    if (!arrivalsCache.length){
+      list.innerHTML = `<div class="status-line">No live inbound departures yet.</div>`;
+      $("paceVal").textContent = "—";
+      $("paceSub").textContent = userPos ? "Waiting for TfL data…" : "Waiting for location & data…";
+      $("verdict").className = "verdict idle";
+      $("distVal").textContent = userPos ? fmtMiles(haversine(userPos, STATION)) : "—";
+      $("timeVal").textContent = "—";
+      $("trainVal").textContent = "—";
+      return;
+    }
+    if (!userPos){
+      // Show trains even without location
+      list.innerHTML = "";
+      arrivalsCache.slice(0,6).forEach(a => {
+        const mins = Math.max(0, Math.round((a.eta - now)/60000));
+        const row = document.createElement("div");
+        row.className = "train-row";
+        row.innerHTML = `<div class="when">${mins===0?"due":mins+" min"}</div>
+          <div class="meta">${a.line||""}<br>→ ${a.destination||""}${a.platform?" · "+a.platform:""}</div>`;
+        list.appendChild(row);
+      });
+      $("paceVal").textContent = "—";
+      $("paceSub").textContent = "Waiting for location…";
+      return;
+    }
+
+    const distM = haversine(userPos, STATION);
+
+    // Pick the first train you can reasonably make at power-walk pace or below;
+    // if none, pick the soonest you could jog for; otherwise the soonest.
+    let pickedIdx = 0;
+    for (let i=0; i<arrivalsCache.length; i++){
+      const secs = (arrivalsCache[i].eta - now)/1000;
+      if (secs <= 0) continue;
+      const req = distM / secs;
+      pickedIdx = i;
+      if (req <= FAST) break;
+    }
+    const picked = arrivalsCache[pickedIdx];
+    const secsLeft = (picked.eta - now)/1000;
+    const v = paceVerdict(distM, secsLeft);
+
+    $("verdict").className = `verdict ${v.tier}`;
+    $("paceVal").textContent = v.speed ? `${v.speed.toFixed(1)} mph` : "—";
+    $("paceSub").textContent = v.label;
+    $("distVal").textContent = fmtMiles(distM);
+    $("timeVal").textContent = fmtMinSec(secsLeft);
+    const mins = Math.max(0, Math.round(secsLeft/60));
+    $("trainVal").textContent = mins <= 0 ? "now" : `${mins} min`;
+
+    list.innerHTML = "";
+    arrivalsCache.slice(0, 6).forEach((a, i) => {
+      const mins = Math.max(0, Math.round((a.eta - now)/60000));
+      const row = document.createElement("div");
+      row.className = "train-row" + (i === pickedIdx ? " picked" : "");
+      row.innerHTML = `<div class="when">${mins===0?"due":mins+" min"}</div>
+        <div class="meta">${a.line||""}<br>→ ${a.destination||""}${a.platform?" · "+a.platform:""}</div>`;
+      list.appendChild(row);
+    });
+  }
+
+  async function pollArrivals(){
+    try {
+      arrivalsCache = await getArrivals();
+      render();
+    } catch (e) {
+      $("trainsList").innerHTML = `<div class="err">${e.message}</div>`;
+    }
+  }
+
+  // ---------- Boot ----------
+  (async () => {
+    await getStationCoords();
+    startWatch();
+    pollArrivals();
+    setInterval(pollArrivals, REFRESH_MS);
+    setInterval(render, 1000); // keep countdown fresh
+  })();
+</script>
+</body>
+</html>
