@@ -137,6 +137,7 @@ margin:8px 0 32px;letter-spacing:-.02em;}
 .select-label{font-family:“JetBrains Mono”,monospace;font-size:10px;letter-spacing:.22em;
 text-transform:uppercase;color:var(–ink-2);margin-bottom:10px}
 .select-options{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.select-options-3{grid-template-columns:1fr}
 .opt{padding:16px 14px;border:1px solid var(–line-2);background:var(–bg);
 color:var(–ink);font-family:“Fraunces”,serif;font-size:17px;font-weight:400;
 cursor:pointer;text-align:left;transition:all .15s ease;letter-spacing:-.01em;}
@@ -152,7 +153,6 @@ font-size:12px;letter-spacing:.22em;text-transform:uppercase;cursor:pointer;}
 <body>
 <div id="selectPage" class="select-wrap">
   <div class="select-card">
-    <div class="kicker">Choose your trip</div>
     <h2 class="select-title">Who's going where?</h2>
 
 ```
@@ -166,8 +166,9 @@ font-size:12px;letter-spacing:.22em;text-transform:uppercase;cursor:pointer;}
 
 <div class="select-group">
   <div class="select-label">To</div>
-  <div class="select-options" data-group="station">
+  <div class="select-options select-options-3" data-group="station">
     <button class="opt" data-value="stjames">St James Street</button>
+    <button class="opt" data-value="walthamstow">Walthamstow Central (Weaver)</button>
     <button class="opt" data-value="blackhorse">Blackhorse Road</button>
   </div>
 </div>
@@ -239,6 +240,16 @@ font-size:12px;letter-spacing:.22em;text-transform:uppercase;cursor:pointer;}
       id: "910GSTJMSST",
       name: "St James Street Overground",
       lat: 51.5828, lon: -0.0098,
+      direction: "inbound",
+      lineId: "weaver",
+      destId: "910GLIVST",
+      destName: "Liverpool St",
+      mode: "overground"
+    },
+    walthamstow: {
+      id: "910GWLTWCEN",
+      name: "Walthamstow Central Overground",
+      lat: 51.5829, lon: -0.0195,
       direction: "inbound",
       lineId: "weaver",
       destId: "910GLIVST",
